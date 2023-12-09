@@ -23,11 +23,11 @@ from . import views
 
 
 urlpatterns = [
-    path("", views.home, name="home"),
+    path("", views.Status.as_view(), name="status"),
     path("admin/", admin.site.urls, name="admin"),
     path("customers/", include("customers.urls"), name="customers"),
     path("products/", include("products.urls"), name="products"),
-    path("get-csrf-token/", views.get_csrf_token, name="get-csrf-token"),
+    path("gettoken/", views.GetToken.as_view(), name="get-csrf-token"),
 ]
 
 if settings.DEBUG:

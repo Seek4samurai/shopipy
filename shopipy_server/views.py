@@ -1,15 +1,16 @@
-from django.http import HttpResponse, JsonResponse
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 from django.middleware.csrf import get_token
 
 
 # Create your views here.
-def home(request):
-    if request.method == "GET":
-        return HttpResponse("Status Check!")
-    else:
-        return HttpResponse("This API only accepts GET requests.")
+class Status(APIView):
+    def get(self, request):
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
 
 
-def get_csrf_token(request):
-    csrf_token = get_token(request)
-    return JsonResponse({"csrfToken": csrf_token})
+class GetToken(APIView):
+    def get(self, request):
+        csrf_token = get_token(request)
+        return Response({"csrfToken": csrf_token}, status=status.HTTP_200_OK)
