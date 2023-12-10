@@ -1,3 +1,7 @@
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
 from django.http import HttpResponse, JsonResponse
 from django.contrib.auth import get_user_model, login, authenticate
 from django.views.decorators.csrf import csrf_exempt
@@ -12,127 +16,101 @@ from products.models import Product
 from .models import Orders
 from .forms import CustomerUser, CustomerUserCreationForm
 from .middleware import TokenAuthenticationMiddleware
+from . import serializers
 
 import json
 import jwt
 
 
-@csrf_exempt
-def signup_view(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            first_name = data.get("firstName")
-            last_name = data.get("lastName")
-            email = data.get("email")
-            password = data.get("password")
+class SignupView(APIView):
+    def post(self, request):
+        serializer = serializers.SignupSerializer(data=request.data)
 
-            form = CustomerUserCreationForm(
-                data={
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "email": email,
-                    "password": password,
-                }
-            )
-            if form.is_valid():
-                email = form.cleaned_data["email"]
-                password = data.get("password")
-
-                user = CustomerUser.objects.create_user(
-                    email=email,
-                    password=password,
-                    first_name=form.cleaned_data["first_name"],
-                    last_name=form.cleaned_data["last_name"],
-                )
-
-                # Set expiration time for the access token (e.g., 1 hour)
-                access_token_expiry = datetime.utcnow() + timedelta(hours=1)
-                refresh_token_expiry = datetime.utcnow() + timedelta(hours=24)
-
-                # Generate access token
-                access_token = jwt.encode(
-                    {"user_id": str(user), "exp": access_token_expiry},
-                    settings.SECRET_KEY,  # key here
-                    algorithm="HS256",
-                )
-                # Generate refresh token
-                refresh_token = jwt.encode(
-                    {"user_id": str(user), "exp": refresh_token_expiry},
-                    settings.SECRET_KEY_2,  # key here
-                    algorithm="HS256",
-                )
-
-                login(
-                    request,
-                    user,
-                    backend="customers.authentication_backends.EmailBackend",
-                )
-
-                return JsonResponse(
-                    {
-                        "access_token": access_token,
-                        "refresh_token": refresh_token,
-                        "message": "User registered and logged in successfully",
-                    }
-                )
-            else:
-                return JsonResponse(
-                    {"error": "Invalid form data", "errors": form.errors}, status=400
-                )
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON data"}, status=400)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-
-@csrf_exempt
-def login_view(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            email = data.get("email")
-            password = data.get("password")
-            user = authenticate(
-                request,
-                email=email,
-                password=password,
-                backend="customers.authentication_backends.EmailBackend",
-            )
+        if serializer.is_valid():
+            user = serializer.save()
 
             # Set expiration time for the access token (e.g., 1 hour)
             access_token_expiry = datetime.utcnow() + timedelta(hours=1)
             refresh_token_expiry = datetime.utcnow() + timedelta(hours=24)
 
-            if user is not None:
-                access_token = jwt.encode(
-                    {"user_id": str(user), "exp": access_token_expiry},
-                    settings.SECRET_KEY,  # key
-                    algorithm="HS256",
-                )
-                refresh_token = jwt.encode(
-                    {"user_id": str(user), "exp": refresh_token_expiry},
-                    settings.SECRET_KEY_2,  # key
-                    algorithm="HS256",
-                )
+            # Generate access token
+            access_token = jwt.encode(
+                {"user_id": str(user), "exp": access_token_expiry},
+                settings.SECRET_KEY,  # key here
+                algorithm="HS256",
+            )
+            # Generate refresh token
+            refresh_token = jwt.encode(
+                {"user_id": str(user), "exp": refresh_token_expiry},
+                settings.SECRET_KEY_2,  # key here
+                algorithm="HS256",
+            )
 
-                login(request, user)
+            login(
+                request,
+                user,
+                backend="customers.authentication_backends.EmailBackend",
+            )
 
-                return JsonResponse(
-                    {
-                        "access_token": access_token,
-                        "refresh_token": refresh_token,
-                        "message": "User logged in successfully",
-                    },
-                    status=200,
-                )
+            return Response(
+                {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "message": "User registered and logged in successfully",
+                },
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response(
+                {"error": "Invalid form data"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-            else:
-                return JsonResponse({"error": "Invalid email or password"}, status=400)
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON data"}, status=400)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+class LoginView(APIView):
+    def post(self, request):
+        serializer = serializers.LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data.get("email")
+        password = serializer.validated_data.get("password")
+
+        user = authenticate(
+            request,
+            email=email,
+            password=password,
+            backend="customers.authentication_backends.EmailBackend",
+        )
+
+        # Set expiration time for the access token (e.g., 1 hour)
+        access_token_expiry = datetime.utcnow() + timedelta(hours=1)
+        refresh_token_expiry = datetime.utcnow() + timedelta(hours=24)
+
+        if user is not None:
+            access_token = jwt.encode(
+                {"user_id": str(user), "exp": access_token_expiry},
+                settings.SECRET_KEY,  # key
+                algorithm="HS256",
+            )
+            refresh_token = jwt.encode(
+                {"user_id": str(user), "exp": refresh_token_expiry},
+                settings.SECRET_KEY_2,  # key
+                algorithm="HS256",
+            )
+
+            login(request, user)
+
+            return Response(
+                {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "message": "User logged in successfully",
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        else:
+            return Response({"error": "Invalid email or password"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 def validate_refresh_token(refresh_token):
