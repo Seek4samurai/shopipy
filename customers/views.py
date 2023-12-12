@@ -2,10 +2,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from django.http import HttpResponse, JsonResponse
-from django.contrib.auth import get_user_model, login, authenticate
-from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import render, redirect
+from django.contrib.auth import login, authenticate
 from django.conf import settings
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -110,7 +107,10 @@ class LoginView(APIView):
             )
 
         else:
-            return Response({"error": "Invalid email or password"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid email or password"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 def validate_refresh_token(refresh_token):
@@ -144,10 +144,10 @@ def generate_access_token(user):
     return access_token
 
 
-@csrf_exempt
-def refresh_token_view(request):
-    if request.method == "POST":
-        refresh_token = request.POST.get("refresh_token")
+class RefreshTokenView(APIView):
+    def post(self, request):
+        data = json.loads(request.body)
+        refresh_token = data.get("refresh_token")
 
         if validate_refresh_token(refresh_token):
             decoded_token = jwt.decode(
@@ -155,34 +155,37 @@ def refresh_token_view(request):
             )
             user = decoded_token["user_id"]
             new_access_token = generate_access_token(user)
-            return JsonResponse({"access_token": new_access_token})
+            return Response(
+                {"access_token": new_access_token}, status=status.HTTP_200_OK
+            )
         else:
-            return JsonResponse({"error": "Invalid refresh token"}, status=400)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+            return Response(
+                {"error": "Invalid refresh token"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
 
-@csrf_exempt
-def logout_view(request):
-    if request.method == "POST":
-        response = JsonResponse({"message": "Logout successful"})
+class LogoutView(APIView):
+    def post(self, request):
+        response = Response({"message": "Logout successful"}, status=status.HTTP_200_OK)
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
         return response
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-@csrf_exempt
-def save_cart_view(request):
-    if request.method == "POST":
-        data = json.loads(request.body)
-        stock_id = data.get("stock_id")
-        item_id = data.get("post_id")
-        volume = data.get("volume")
-        user_id = getattr(request, "user_id", None)
-
+class SaveCartView(APIView):
+    def post(self, request):
         try:
+            data = json.loads(request.body)
+            stock_id = data.get("stock_id")
+            item_id = data.get("post_id")
+            volume = data.get("volume")
+            user_id = getattr(request, "user_id", None)
+
+            if not all([stock_id, item_id, volume, user_id]):
+                return Response(
+                    {"error": "Invalid data format"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
             json_data = {"stock_id": stock_id, "item_id": item_id, "volume": volume}
             active_user = CustomerUser.objects.get(email=user_id)
             userdata_fields = [field.name for field in CustomerUser._meta.get_fields()]
@@ -194,44 +197,58 @@ def save_cart_view(request):
 
             for item in cart_data:
                 if item["stock_id"] == stock_id:
-                    return JsonResponse({"Message": "Item already in cart"}, status=200)
+                    return Response(
+                        {"Message": "Item already in cart"}, status=status.HTTP_200_OK
+                    )
 
             cart_data.append(json_data)
             active_user.cart = cart_data
             active_user.save()
 
+            return Response({"Message": "Item added"}, status=status.HTTP_200_OK)
+
         except CustomerUser.DoesNotExist:
-            print("Object not found.")
+            return Response(
+                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        except json.JSONDecodeError:
+            return Response(
+                {"error": "Invalid JSON data"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
-        return JsonResponse({"Message": "Item added"}, status=200)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
 
-
-def fetch_cart(request):
-    if request.method == "GET":
+class FetchCart(APIView):
+    def get(self, request):
         user_id = getattr(request, "user_id", None)
+
         try:
-            active_user = CustomerUser.objects.get(email=user_id)
-            cart_data = active_user.cart
-            return JsonResponse({"cart_data": cart_data}, status=200)
+            if user_id:
+                active_user = CustomerUser.objects.get(email=user_id)
+                cart_data = active_user.cart
+                return Response({"cart_data": cart_data}, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {"error": "Invalid user_id"}, status=status.HTTP_400_BAD_REQUEST
+                )
 
         except CustomerUser.DoesNotExist:
             print("Object not found.")
-            return JsonResponse({"error": "Error occured"}, status=500)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+            return Response(
+                {"error": "Error occured"}, status=status.HTTP_404_NOT_FOUND
+            )
 
 
-def fetch_cart_data(request):
-    if request.method == "GET":
+class FetchCartData(APIView):
+    def get(self, request):
         user_id = getattr(request, "user_id", None)
         product_fields = [field.name for field in Product._meta.get_fields()]
         cart_data = []
         stock_data = []
+
         try:
             active_user = CustomerUser.objects.get(email=user_id)
             cart_items = active_user.cart
+
             for item in cart_items:
                 try:
                     obj = Product.objects.get(id=item["item_id"])
@@ -252,40 +269,53 @@ def fetch_cart_data(request):
                     cart_data.append(data)
 
                 except Product.DoesNotExist:
-                    return JsonResponse({"error": "Product not found."}, status=500)
+                    return Response(
+                        {"error": "Product not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
 
-            return JsonResponse({"cart_data": cart_data}, status=200)
+            return Response({"cart_data": cart_data}, status=status.HTTP_200_OK)
 
         except CustomerUser.DoesNotExist:
             print("Object not found.")
-            return JsonResponse({"error": "Error occured"}, status=500)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+            return Response(
+                {"error": "Error occured"}, status=status.HTTP_404_NOT_FOUND
+            )
 
 
-@csrf_exempt
-def update_cart_view(request):
-    if request.method == "POST":
-        data = json.loads(request.body)
-        stock_id = data.get("stock_id")
-        user_id = getattr(request, "user_id", None)
+class UpdateCartView(APIView):
+    def post(self, request):
         try:
+            data = json.loads(request.body)
+            stock_id = data.get("stock_id")
+            user_id = getattr(request, "user_id", None)
+
+            if not stock_id or not user_id:
+                return Response(
+                    {"error": "Invalid data format"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
             active_user = CustomerUser.objects.get(email=user_id)
             cart_data = active_user.cart
 
             updated_cart_data = [
                 item for item in cart_data if item["stock_id"] != stock_id
             ]
+
             active_user.cart = updated_cart_data
             active_user.save()
 
-            return JsonResponse({"cart_data": updated_cart_data}, status=200)
+            return Response({"cart_data": updated_cart_data}, status=status.HTTP_200_OK)
 
         except CustomerUser.DoesNotExist:
-            print("Object not found.")
-            return JsonResponse({"error": "Error occured"}, status=500)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+            print("User not found.")
+            return Response(
+                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        except json.JSONDecodeError:
+            return Response(
+                {"error": "Invalid JSON data"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class JsonEncoder(json.JSONEncoder):
@@ -299,8 +329,8 @@ class JsonEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def place_order(request):
-    if request.method == "GET":
+class PlaceOrder(APIView):
+    def get(self, request):
         user_id = getattr(request, "user_id", None)
         product_fields = [field.name for field in Product._meta.get_fields()]
         item_list = []
@@ -326,11 +356,11 @@ def place_order(request):
                                     data["items"] = value[i]["items"]
                                     if value[i]["total"]:
                                         if int(value[i]["total"]) < item["volume"]:
-                                            return JsonResponse(
+                                            return Response(
                                                 {
                                                     "error": f"{value[i]['title']} is Out Of Stock."
                                                 },
-                                                status=500,
+                                                status=status.HTTP_200_OK,
                                             )
                                         else:
                                             data["volume"] = item["volume"]
@@ -352,7 +382,10 @@ def place_order(request):
                     item_list.append(data)
 
                 except Product.DoesNotExist:
-                    return JsonResponse({"error": "Product not found."}, status=500)
+                    return Response(
+                        {"error": "Product not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
 
             name = active_user.email
             region = active_user.region
@@ -369,10 +402,10 @@ def place_order(request):
             active_user.cart = active_user.cart.clear()
             active_user.save()
 
-            return HttpResponse(status=200)
+            return Response(status=status.HTTP_200_OK)
 
         except CustomerUser.DoesNotExist:
             print("Object not found.")
-            return JsonResponse({"error": "Error occured"}, status=500)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+            return Response(
+                {"error": "Error occured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
