@@ -10,7 +10,7 @@ urlpatterns = [
     path("item/<uuid:id>/", views.FetchItem.as_view(), name="fetch_item"),
     path(
         "filter/<str:item_type>/<str:category>/<str:gender>/<str:sort_by>/search/",
-        views.filter_products,
+        views.FilterProducts.as_view(),
         name="filter_products",
     ),
 ]

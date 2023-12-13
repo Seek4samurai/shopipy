@@ -4,9 +4,7 @@ from rest_framework.response import Response
 
 import re
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
 from django.core.paginator import Paginator
-from datetime import datetime
 
 from customers.models import CustomerUser
 from .models import Product
@@ -98,7 +96,7 @@ class FetchItem(APIView):
                 else:
                     data[field] = value
 
-            return JsonResponse(data)
+            return Response(data, status=status.HTTP_200_OK)
 
         except Product.DoesNotExist:
             print("Object not found.")
@@ -107,51 +105,54 @@ class FetchItem(APIView):
             )
 
 
-def filter_products(requests, item_type, category, gender, sort_by):
-    filters = {
-        "brick": item_type,
-        "category": category,
-        "gender": gender,
-    }
-    filters = {key: value for key, value in filters.items() if value != "Any"}
+class FilterProducts(APIView):
+    def get(self, request, item_type, category, gender, sort_by):
+        filters = {
+            "brick": item_type,
+            "category": category,
+            "gender": gender,
+        }
+        filters = {key: value for key, value in filters.items() if value != "Any"}
 
-    filtered_products = Product.objects.all()
+        filtered_products = Product.objects.all()
 
-    # Apply filters dynamically to the queryset
-    for field, value in filters.items():
-        if field == "gender":
-            all_values = value.split(",")
-            q_object = Q()
+        # Apply filters dynamically to the queryset
+        for field, value in filters.items():
+            if field == "gender":
+                all_values = value.split(",")
+                q_object = Q()
 
-            for val in all_values:
-                val = val.strip()
-                escaped_value = re.escape(val)
-                regex_pattern = rf"\b{escaped_value}\b"
-                q_object |= Q(gender__regex=regex_pattern)
+                for val in all_values:
+                    val = val.strip()
+                    escaped_value = re.escape(val)
+                    regex_pattern = rf"\b{escaped_value}\b"
+                    q_object |= Q(gender__regex=regex_pattern)
 
-            filtered_products = filtered_products.filter(q_object)
+                filtered_products = filtered_products.filter(q_object)
 
-        else:
-            all_values = value.split(",")
-            q_object = Q()
+            else:
+                all_values = value.split(",")
+                q_object = Q()
 
-            for val in all_values:
-                val = val.strip()
-                q_object |= Q(**{f"{field}__name": val})
+                for val in all_values:
+                    val = val.strip()
+                    q_object |= Q(**{f"{field}__name": val})
 
-            filtered_products = filtered_products.filter(q_object)
+                filtered_products = filtered_products.filter(q_object)
 
-    products_data = list(filtered_products.values())
+        products_data = list(filtered_products.values())
 
-    # Sorting part if it exists
-    if sort_by != "Any" and sort_by != "newest":
-        sort_order = {"mrp_low_to_high": False, "mrp_high_to_low": True}
-        sorting_param = sort_order.get(sort_by, False)
+        # Sorting part if it exists
+        if sort_by != "Any" and sort_by != "newest":
+            sort_order = {"mrp_low_to_high": False, "mrp_high_to_low": True}
+            sorting_param = sort_order.get(sort_by, False)
 
-        products_data = sorted(
-            products_data, key=lambda x: x["mrp"], reverse=sorting_param
-        )
-    elif sort_by == "newest":
-        products_data = sorted(products_data, key=lambda x: x["created"], reverse=True)
+            products_data = sorted(
+                products_data, key=lambda x: x["mrp"], reverse=sorting_param
+            )
+        elif sort_by == "newest":
+            products_data = sorted(
+                products_data, key=lambda x: x["created"], reverse=True
+            )
 
-    return JsonResponse(list(products_data), safe=False)
+        return Response(list(products_data), status=status.HTTP_200_OK)
