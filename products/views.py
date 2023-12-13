@@ -1,3 +1,7 @@
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
 import re
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -10,43 +14,52 @@ from .middleware import TokenAuthenticationMiddleware
 
 
 # Create your views here.
-def fetch_products(request):
-    user_id = getattr(request, "user_id", None)
-    try:
-        active_user = CustomerUser.objects.get(email=user_id)
-        active_user_region_string = active_user.region
-        active_regions = ""
+class FetchProducts(APIView):
+    def get(self, request):
+        try:
+            user_id = getattr(request, "user_id", None)
+            active_user = CustomerUser.objects.get(email=user_id)
+            active_user_region_string = active_user.region
+            active_regions = ""
 
-        if active_user_region_string:
-            active_regions = active_user_region_string.split(",")
+            if active_user_region_string:
+                active_regions = active_user_region_string.split(",")
 
-        product_fields = [field.name for field in Product._meta.get_fields()]
-        products_list = []  # Create a list to store products for all regions
+            product_fields = [field.name for field in Product._meta.get_fields()]
+            products_list = []  # Create a list to store products for all regions
 
-        product_fields.append("brand__name")
-        product_fields.append("brick__name")
-        product_fields.append("category__name")
-        product_fields.append("collection__name")
-        product_fields.append("uploaded_by__username")
+            product_fields.append("brand__name")
+            product_fields.append("brick__name")
+            product_fields.append("category__name")
+            product_fields.append("collection__name")
+            product_fields.append("uploaded_by__username")
 
-        if not active_regions:
-            print("Empty Regions")
-            products = Product.objects.all().values(*product_fields)
-            products_list.extend(products)
-
-        else:
-            print("Non-Empty Regions")
-            for region in active_regions:
-                products = Product.objects.filter(
-                    style_region__icontains=region.strip()
-                ).values(*product_fields)
+            if not active_regions:
+                print("Empty Regions")
+                products = Product.objects.all().values(*product_fields)
                 products_list.extend(products)
 
-        return JsonResponse(products_list, safe=False, status=200)
+            else:
+                print("Non-Empty Regions")
+                for region in active_regions:
+                    products = Product.objects.filter(
+                        style_region__icontains=region.strip()
+                    ).values(*product_fields)
+                    products_list.extend(products)
 
-    except CustomerUser.DoesNotExist:
-        print("Object not found.")
-        return JsonResponse({"error": "Error occured"}, status=500)
+            return Response(products_list, status=status.HTTP_200_OK)
+
+        except Product.DoesNotExist:
+            print("Object not found.")
+            return Response(
+                {"error": "Error occured"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        except CustomerUser.DoesNotExist:
+            print("Object not found.")
+            return Response(
+                {"error": "Error occured"}, status=status.HTTP_404_NOT_FOUND
+            )
 
 
 # For unAuthenticated Users

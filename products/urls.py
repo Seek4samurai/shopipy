@@ -3,7 +3,7 @@ from . import views
 
 
 urlpatterns = [
-    path("", views.fetch_products, name="fetch_all_products"),
+    path("", views.FetchProducts.as_view(), name="fetch_all_products"),
     path(
         "guest/", views.unAuth_fetch_products, name="fetch_all_products_guest"
     ),  # unAuthenticated API for products
