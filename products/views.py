@@ -63,44 +63,48 @@ class FetchProducts(APIView):
 
 
 # For unAuthenticated Users
-def unAuth_fetch_products(request):
-    product_fields = [field.name for field in Product._meta.get_fields()]
-
-    product_fields.append("brand__name")
-    product_fields.append("brick__name")
-    product_fields.append("category__name")
-    product_fields.append("collection__name")
-    product_fields.append("uploaded_by__username")
-
-    products = Product.objects.all().values(*product_fields)
-
-    paginator_instance = Paginator(products, 5)
-    page_number = request.GET.get("page")
-    page_obj = paginator_instance.get_page(page_number)
-
-    return JsonResponse(list(page_obj), safe=False)
-
-
-def fetch_item(requests, id):
-    try:
-        obj = Product.objects.get(id=id)
+class UnAuthFetchProducts(APIView):
+    def get(self, request):
         product_fields = [field.name for field in Product._meta.get_fields()]
 
-        data = {}
-        for field in product_fields:
-            value = getattr(obj, field)
-            if field == "uploaded_by":
-                data[field] = value.username if value else None
-            elif hasattr(value, "name"):
-                data[field] = value.name
-            else:
-                data[field] = value
+        product_fields.append("brand__name")
+        product_fields.append("brick__name")
+        product_fields.append("category__name")
+        product_fields.append("collection__name")
+        product_fields.append("uploaded_by__username")
 
-        return JsonResponse(data)
+        products = Product.objects.all().values(*product_fields)
 
-    except Product.DoesNotExist:
-        print("Object not found.")
-    return HttpResponse("Done")
+        paginator_instance = Paginator(products, 5)
+        page_number = request.GET.get("page")
+        page_obj = paginator_instance.get_page(page_number)
+
+        return Response(list(page_obj), safe=False, status=status.HTTP_200_OK)
+
+
+class FetchItem(APIView):
+    def get(self, request, id):
+        try:
+            obj = Product.objects.get(id=id)
+            product_fields = [field.name for field in Product._meta.get_fields()]
+
+            data = {}
+            for field in product_fields:
+                value = getattr(obj, field)
+                if field == "uploaded_by":
+                    data[field] = value.username if value else None
+                elif hasattr(value, "name"):
+                    data[field] = value.name
+                else:
+                    data[field] = value
+
+            return JsonResponse(data)
+
+        except Product.DoesNotExist:
+            print("Object not found.")
+            return Response(
+                {"error": "Product not found!"}, status=status.HTTP_404_NOT_FOUND
+            )
 
 
 def filter_products(requests, item_type, category, gender, sort_by):
