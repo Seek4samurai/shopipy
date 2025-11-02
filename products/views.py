@@ -77,7 +77,7 @@ class UnAuthFetchProducts(APIView):
         page_number = request.GET.get("page")
         page_obj = paginator_instance.get_page(page_number)
 
-        return Response(list(page_obj), safe=False, status=status.HTTP_200_OK)
+        return Response(list(page_obj), status=status.HTTP_200_OK)
 
 
 class FetchItem(APIView):
